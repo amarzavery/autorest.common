@@ -60,6 +60,11 @@ namespace AutoRest.Core
         public virtual string GenerateSample(bool isolateSnippet, CodeModel cm, MethodGroup g, Method m, string exampleName, Model.XmsExtensions.Example example) => null;
 
         /// <summary>
+        /// Generates example code from an x-ms-examples section.
+        /// </summary>
+        public virtual string GenerateSampleWithPrefix(bool isolateSnippet, CodeModel cm, MethodGroup g, Method m, string exampleName, Model.XmsExtensions.Example example, bool applyPrefixOnce = true, bool isLast = false) => null;
+
+        /// <summary>
         /// Generates code samples and outputs them in the file system.
         /// </summary>
         public async Task GenerateSamples(CodeModel codeModel)
@@ -76,6 +81,66 @@ namespace AutoRest.Core
                     {
                         Logger.Instance.Log(Category.Debug, $"Generating example '{example.Key}' of '{group.Name}/{method.Name}'");
                         var content = GenerateSample(singleFile, codeModel, group, method, example.Key, example.Value);
+                        if (content != null)
+                        {
+                            outputs.Add(new Tuple<MethodGroup, Method, string, string>(group, method, example.Key, content));
+                        }
+                        else
+                        {
+                            Logger.Instance.Log(Category.Warning, $"Did not generate example '{example.Key}' of '{group.Name}/{method.Name}'");
+                        }
+                    }
+                }
+            }
+
+            if (singleFile)
+            {
+                var outputFileName = Settings.Instance.OutputFileName;
+                Settings.Instance.OutputFileName = null; // prevent misleading error inside `Write` about single file output not being supported...
+                await Write(string.Join("\n\n", outputs.Select(output => output.Item4)), outputFileName);
+            }
+            else
+            {
+                foreach (var output in outputs)
+                {
+                    var folder = string.IsNullOrEmpty(output.Item1.Name) ? "" : (output.Item1.Name + "/");
+                    await Write(output.Item4, $"{folder}{output.Item2.Name} ({output.Item3}){ImplementationFileExtension}");
+                }
+            }
+        }
+        
+        public async Task GenerateSamplesWithPrefix(CodeModel codeModel)
+        {
+            var singleFile = Settings.Instance.OutputFileName != null;
+            var outputs = new List<Tuple<MethodGroup, Method, string, string>>();
+            var applyPrefix = true;
+            var numberOfGroups = codeModel.Operations.Count();
+            for (var i = 0; i < numberOfGroups; i++)
+            {
+                var group = codeModel.Operations[i];
+                for (var j = 0; j < group.Methods.Count(); j++)
+                {
+                    var method = group.Methods[j];
+                    var examplesRaw = method.Extensions.GetValue<JObject>(Model.XmsExtensions.Examples.Name);
+                    var examples = Model.XmsExtensions.Examples.FromJObject(examplesRaw);
+                    foreach (var example in examples)
+                    {
+                        Logger.Instance.Log(Category.Debug, $"Generating example '{example.Key}' of '{group.Name}/{method.Name}'");
+                        string content = null;
+                        if (applyPrefix)
+                        {
+                            content = GenerateSampleWithPrefix(singleFile, codeModel, group, method, example.Key, example.Value, true, false);
+                            applyPrefix = false;
+                        }
+                        else if (i == numberOfGroups-1)
+                        {
+                            content = GenerateSampleWithPrefix(singleFile, codeModel, group, method, example.Key, example.Value, false, true);
+                        }
+                        else
+                        {
+                            content = GenerateSampleWithPrefix(singleFile, codeModel, group, method, example.Key, example.Value, false, false);
+                        }
+
                         if (content != null)
                         {
                             outputs.Add(new Tuple<MethodGroup, Method, string, string>(group, method, example.Key, content));
