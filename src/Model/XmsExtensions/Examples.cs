@@ -16,6 +16,9 @@ namespace AutoRest.Core.Model.XmsExtensions
 
     public class Example
     {
+        public string OperationId { get; set; }
+        public string Title {get; set; }
+        public string Description { get; set; }
         public Dictionary<string, JToken> Parameters { get; set; }
         public Dictionary<string, ExampleResponse> Responses { get; set; }
     }
